@@ -1,6 +1,5 @@
-streamlit==1.19.0
-altair==4.2.2
-pandas==3.0.1
-openpyxl==3.1.5
-matplotlib==3.10.8
-reportlab==4.4.10
+streamlit>=1.41,<2
+pandas
+openpyxl
+matplotlib
+reportlab
