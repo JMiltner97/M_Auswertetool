@@ -723,10 +723,10 @@ def process_file(xml_bytes: bytes) -> tuple[pd.DataFrame, dict, dict]:
     df, participant_info = parse_spreadsheetml(xml_bytes)
     out, missing_columns = keep_requested_columns(df)
 
-    out = trim_to_abbruch(out)
     out = convert_numeric_columns(out)
     out = add_time_seconds(out)
     out = add_forward_rolling_averages(out)
+    out = trim_to_abbruch(out)
 
     metrics = calculate_metrics(out, missing_columns)
     return out, metrics, participant_info
