@@ -943,6 +943,32 @@ def build_pre_post_summary_tables(metrics_all: dict, participant_info: dict | No
     }
 
 
+def build_pdf_editor_tables(summary_tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    editor_tables = {}
+
+    for title, df in summary_tables.items():
+        edit_df = df.copy()
+        if "Label" in edit_df.columns:
+            edit_df["Messwert"] = edit_df["Label"]
+        else:
+            edit_df["Messwert"] = edit_df["Metric"]
+
+        editor_tables[title] = edit_df[["Messwert", "Pre", "Post"]].copy()
+
+    return editor_tables
+
+
+def build_pdf_tables_from_editor(editor_tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    pdf_tables = {}
+
+    for title, df in editor_tables.items():
+        clean_df = df.copy()
+        clean_df = clean_df.rename(columns={"Messwert": "Metric"})
+        pdf_tables[title] = clean_df[["Metric", "Pre", "Post"]].copy()
+
+    return pdf_tables
+
+
 def create_lactate_chart_image(pre_df: pd.DataFrame, post_df: pd.DataFrame) -> BytesIO | None:
     if pre_df.empty and post_df.empty:
         return None
@@ -1137,7 +1163,7 @@ def draw_summary_table(
 
 def create_results_pdf(
     participant_info: dict | None,
-    metrics_all: dict,
+    summary_tables: dict[str, pd.DataFrame],
     pre_lactate_df: pd.DataFrame,
     post_lactate_df: pd.DataFrame,
 ) -> bytes:
@@ -1148,7 +1174,6 @@ def create_results_pdf(
     draw_placeholder_logo(pdf, page_width, page_height)
     draw_participant_box(pdf, participant_info, page_height)
 
-    summary_tables = build_pre_post_summary_tables(metrics_all, participant_info)
     chart_bytes = create_lactate_chart_image(pre_lactate_df, post_lactate_df)
     table_x = 20 * mm
     table_top_y = page_height - 72 * mm
@@ -1203,13 +1228,13 @@ def create_results_pdf(
 
 def render_pdf_export_button(
     participant_info: dict | None,
-    metrics_all: dict,
+    summary_tables: dict[str, pd.DataFrame],
     pre_lactate_df: pd.DataFrame,
     post_lactate_df: pd.DataFrame,
 ):
     pdf_bytes = create_results_pdf(
         participant_info=participant_info,
-        metrics_all=metrics_all,
+        summary_tables=summary_tables,
         pre_lactate_df=pre_lactate_df,
         post_lactate_df=post_lactate_df,
     )
@@ -1227,6 +1252,70 @@ def render_pdf_export_button(
         mime="application/pdf",
         key="download_results_pdf",
         use_container_width=False,
+    )
+
+
+def render_pdf_editor_section(
+    participant_info: dict | None,
+    metrics_all: dict,
+    pre_lactate_df: pd.DataFrame,
+    post_lactate_df: pd.DataFrame,
+):
+    participant_info = (participant_info or {}).copy()
+    summary_tables = build_pre_post_summary_tables(metrics_all, participant_info)
+    editor_tables = build_pdf_editor_tables(summary_tables)
+
+    st.subheader("PDF-Vorschau und Bearbeitung")
+    st.caption("Diese Werte werden fuer den PDF-Export verwendet und koennen vor dem Download angepasst werden.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        participant_info["participant_name"] = st.text_input(
+            "Name fuer PDF",
+            value=str(participant_info.get("participant_name") or ""),
+            key="pdf_participant_name",
+        )
+    with col2:
+        participant_info["participant_id"] = st.text_input(
+            "Teilnehmer-ID fuer PDF",
+            value=str(participant_info.get("participant_id") or ""),
+            key="pdf_participant_id",
+        )
+
+    edited_summary_tables = {}
+    for title, df in editor_tables.items():
+        st.markdown(f"**{title}**")
+        edited_summary_tables[title] = st.data_editor(
+            df,
+            key=f"pdf_editor_{title}",
+            hide_index=True,
+            use_container_width=True,
+            num_rows="fixed",
+        )
+
+    st.markdown("**Laktat Pre**")
+    edited_pre_lactate_df = st.data_editor(
+        pre_lactate_df,
+        key="pdf_editor_lactate_pre",
+        hide_index=True,
+        use_container_width=True,
+        num_rows="dynamic",
+    )
+
+    st.markdown("**Laktat Post**")
+    edited_post_lactate_df = st.data_editor(
+        post_lactate_df,
+        key="pdf_editor_lactate_post",
+        hide_index=True,
+        use_container_width=True,
+        num_rows="dynamic",
+    )
+
+    return (
+        participant_info,
+        build_pdf_tables_from_editor(edited_summary_tables),
+        edited_pre_lactate_df,
+        edited_post_lactate_df,
     )
 
 
@@ -1467,11 +1556,23 @@ if results:
         ["AD1", "AD2"],
     )
 
-    render_pdf_export_button(
+    (
+        pdf_participant_info,
+        pdf_summary_tables,
+        pdf_pre_lactate_df,
+        pdf_post_lactate_df,
+    ) = render_pdf_editor_section(
         participant_info=participant_info_first,
         metrics_all=metrics_all,
         pre_lactate_df=pre_lactate_df,
         post_lactate_df=post_lactate_df,
+    )
+
+    render_pdf_export_button(
+        participant_info=pdf_participant_info,
+        summary_tables=pdf_summary_tables,
+        pre_lactate_df=pdf_pre_lactate_df,
+        post_lactate_df=pdf_post_lactate_df,
     )
 
     summary_df = build_summary_df(metrics_all, uploads)
